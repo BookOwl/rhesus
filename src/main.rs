@@ -1,7 +1,7 @@
 use std::io;
 use std::io::prelude::*;
 
-mod lex;
+use rhesus;
 
 fn main() -> io::Result<()> {
     let mut stdout  = io::stdout();
@@ -12,7 +12,7 @@ fn main() -> io::Result<()> {
         write!(&mut stdout, "> ")?;
         stdout.flush()?;
         stdin.read_line(&mut buf)?;
-        println!("{:#?}", lex::lex(&buf).collect::<Vec<_>>());
+        println!("{:#?}", rhesus::lex::lex(&buf).collect::<Vec<_>>());
         buf.clear();
     }
 }

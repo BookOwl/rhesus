@@ -2,40 +2,9 @@ use std::str::CharIndices;
 use std::iter::Peekable;
 use std::ops::Fn;
 
-#[derive(Debug, PartialEq)]
-pub enum Token<'a> {
-    Ident(&'a str),
-    Int(i64),
-    Assign,
-    Plus,
-    Minus,
-    Slash,
-    Star,
-    Bang,
-    Eq,
-    NotEq,
-    GtEq,
-    LtEq,
-    Comma,
-    Semicolon,
-    LParen,
-    RParen,
-    LBrace,
-    RBrace,
-    LT,
-    GT,
-    Function,
-    Let,
-    True,
-    False,
-    If,
-    Else,
-    Return,
-    Illegal,
-}
+use crate::ast::Token;
 
-
-pub fn lex(src: &str) -> impl Iterator<Item=Token> {
+pub fn lex<'a>(src: &'a str) -> impl Iterator<Item=Token<'a>> {
     Lexer::new(src)
 }
 
