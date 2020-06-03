@@ -1,5 +1,14 @@
-#[derive(Debug, PartialEq)]
-pub enum Token<'a> {
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub struct Span {
+    pub line: u64,
+    pub col: u64,
+    pub start_idx: u64,
+    pub end_idx: u64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum TokenKind<'a> {
     Ident(&'a str),
     Int(i64),
     Assign,
@@ -28,4 +37,10 @@ pub enum Token<'a> {
     Else,
     Return,
     Illegal,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Token<'a> {
+    pub loc: Span,
+    pub kind: TokenKind<'a>,
 }

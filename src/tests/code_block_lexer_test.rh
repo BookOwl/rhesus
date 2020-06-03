@@ -1,0 +1,24 @@
+let five = 5;
+let ten = 10;
+
+let add = fn(x, y) {
+    x + y;
+};
+
+let result = add(five, ten);
+
+5 < 10 > 3
+!!1
+spam * eggs - foo / bar
+
+if true { print(1) } else { print(false) }
+
+let fib = fn(n) {
+    if n <= 2 {
+        return 1;
+    } else {
+        return fib(n-1) + fib(n-2);
+    }
+}
+
+print(fib(5))
