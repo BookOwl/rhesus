@@ -195,6 +195,7 @@ impl Parser {
         let mut left = match cur.kind {
             TokenKind::Ident => self.parse_ident()?,
             TokenKind::Int => self.parse_int()?,
+            TokenKind::True | TokenKind::False => self.parse_bool()?,
             TokenKind::Bang | TokenKind::Minus => self.parse_prefix()?,
             _ => return Err(ParseError {
                     loc: cur.loc,
@@ -213,30 +214,45 @@ impl Parser {
     }
 
     fn parse_ident(&mut self) -> ParseExpressionResult {
-        match self.cur.as_ref() {
-            Some(t @ &Token {kind: TokenKind::Ident, ..}) => Ok(Expression {
+        match self.cur.unwrap() {
+            t @ Token {kind: TokenKind::Ident, ..} => Ok(Expression {
                 loc: t.loc,
                 kind: ExpressionKind::Variable(t.str_data().unwrap()),
             }),
-            Some(t) => Err(ParseError{
+            t => Err(ParseError{
                 loc: t.loc,
                 reason: format!("Expected an identifier, found a {:?}", t.kind)
             }),
-            _ => panic!("Unexpected EOF, this is a bug(?)")
         }
     }
 
     fn parse_int(&mut self) -> ParseExpressionResult {
-        match self.cur.as_ref() {
-            Some(t @ &Token {kind: TokenKind::Int, ..}) => Ok(Expression {
+        match self.cur.unwrap() {
+            t @ Token {kind: TokenKind::Int, ..} => Ok(Expression {
                 loc: t.loc,
                 kind: ExpressionKind::Int(t.int_data().unwrap()),
             }),
-            Some(t) => Err(ParseError{
+            t => Err(ParseError{
                 loc: t.loc,
                 reason: format!("Expected an integer, found a {:?}", t.kind)
             }),
-            _ => panic!("Unexpected EOF, this is a bug(?)")
+        }
+    }
+
+    fn parse_bool(&mut self) -> ParseExpressionResult {
+        match self.cur.unwrap() {
+            Token {kind: TokenKind::True, loc, ..} => Ok(Expression {
+                loc,
+                kind: ExpressionKind::Bool(true),
+            }),
+            Token {kind: TokenKind::False, loc, ..} => Ok(Expression {
+                loc,
+                kind: ExpressionKind::Bool(false),
+            }),
+            t => Err(ParseError{
+                loc: t.loc,
+                reason: format!("Expected a boolean, found a {:?}", t.kind)
+            }),
         }
     }
 
@@ -348,11 +364,15 @@ mod tests {
             1 + 2;
             3 - 5;
             5 * 5;
-            6 / 2;
+            6 / 2
             2 > 1;
-            2 < 1;
+            2 < 1
             10 == 5;
             5 != 5;
+            true == false
+            false == true;
+            1 > 2 == false;
+            false + true;
         ";
         let expected = "\
             (1 + 2);\n\
@@ -363,6 +383,10 @@ mod tests {
             (2 < 1);\n\
             (10 == 5);\n\
             (5 != 5);\n\
+            (true == false);\n\
+            (false == true);\n\
+            ((1 > 2) == false);\n\
+            (false + true);\n\
         ";
         let mut got = String::new();
         let mut intern = intern::Intern::new();

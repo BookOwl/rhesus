@@ -88,6 +88,9 @@ impl Expression {
                 expr.to_code(i, out);
                 out.push(')');
             },
+            ExpressionKind::Bool(b) => {
+                write!(out, "{}", if *b { "true" } else { "false" });
+            }
             ExpressionKind::InfixOp {operator, left, right} => {
                 out.push('(');
                 left.to_code(i, out);
@@ -154,6 +157,7 @@ impl InfixOperator {
 pub enum ExpressionKind {
     Variable(intern::Id),
     Int(i64),
+    Bool(bool),
     PrefixOp {
         operator: PrefixOperator,
         expr: Box<Expression>,
