@@ -197,6 +197,7 @@ impl Parser {
             TokenKind::Int => self.parse_int()?,
             TokenKind::True | TokenKind::False => self.parse_bool()?,
             TokenKind::Bang | TokenKind::Minus => self.parse_prefix()?,
+            TokenKind::LParen => self.parse_grouped()?,
             _ => return Err(ParseError {
                     loc: cur.loc,
                     reason: format!("No prefix parse function for {:?}", cur.kind)
@@ -278,6 +279,13 @@ impl Parser {
         })
     }
 
+    fn parse_grouped(&mut self) -> ParseExpressionResult {
+        self.read_token();
+        let exp = self.parse_expression(ExpressionPrecedence::Lowest)?;
+        self.expect_peek(TokenKind::RParen, "grouped expression")?;
+        Ok(exp)
+    }
+
     fn parse_infix(&mut self, left: Expression) -> ParseExpressionResult {
         let cur = self.cur.unwrap();
         let loc = cur.loc;
@@ -317,6 +325,25 @@ mod tests {
     use super::*;
     use crate::intern;
     use crate::ast;
+
+    macro_rules! parse_test {
+        ($n:ident: $input:expr => $expected:expr) => {
+            #[test]
+            fn $n() {
+                let test = $input;
+                let expected = $expected;
+                let mut intern = intern::Intern::new();
+                let mut l = lexer::Lexer::new(&test, &mut intern);
+                let toks = l.lex_to_vec();
+                let mut parser = Parser::new(toks);
+                let (prog, errs) = parser.parse_program();
+                assert_eq!(errs.len(), 0, "Had {} parse errors: {:?}", errs.len(), errs);
+                let mut code = String::new();
+                prog.to_code(&intern, &mut code);
+                assert_eq!(code, expected);
+            }
+        };
+    }
     #[test]
     fn test_let_parsing() {
         let test = r#"
@@ -339,29 +366,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_prefix_parsing() {
-        let test = r#"
-        !5;
-        -x;
-        "#;
-        let mut intern = intern::Intern::new();
-        let mut l = lexer::Lexer::new(&test, &mut intern);
-        let toks = l.lex_to_vec();
-        let mut parser = Parser::new(toks);
-        let (prog, errs) = parser.parse_program();
-        assert_eq!(errs.len(), 0, "Had {} parse errors: {:?}", errs.len(), errs);
-        println!("{:#?}", prog);
-        let mut code = String::new();
-        let expected_code = "!(5);\n-(x);\n";
-        prog.to_code(&intern,&mut code);
-        assert_eq!(code, expected_code);
-    }
+    parse_test!(prefix_parsing: "!5;\n-x;" => "!(5);\n-(x);\n");
 
-    #[test]
-    fn test_infix_parsing() {
-        let test = "
-            1 + 2;
+    parse_test!(infix_parsing:
+           "1 + 2;
             3 - 5;
             5 * 5;
             6 / 2
@@ -373,8 +381,7 @@ mod tests {
             false == true;
             1 > 2 == false;
             false + true;
-        ";
-        let expected = "\
+        " => "\
             (1 + 2);\n\
             (3 - 5);\n\
             (5 * 5);\n\
@@ -387,14 +394,18 @@ mod tests {
             (false == true);\n\
             ((1 > 2) == false);\n\
             (false + true);\n\
-        ";
-        let mut got = String::new();
-        let mut intern = intern::Intern::new();
-        let mut l = lexer::Lexer::new(&test, &mut intern);
-        let mut parser = Parser::new(l.lex_to_vec());
-        let (prog, errs) = parser.parse_program();
-        prog.to_code(&intern, &mut got);
-        assert_eq!(errs.len(), 0, "Had {} parse errors: {:?}", errs.len(), errs);
-        assert_eq!(expected, got);
-    }
+        ");
+
+    parse_test!(grouping:
+               "(1+1);
+                1 + (1 * 2);
+                (1 + 2) / 3;
+                (1 + 2) * (4 - 2);
+                " => "\
+                (1 + 1);\n\
+                (1 + (1 * 2));\n\
+                ((1 + 2) / 3);\n\
+                ((1 + 2) * (4 - 2));\n\
+                "
+    );
 }
