@@ -25,6 +25,22 @@ impl Program {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct Block {
+    pub stmts: Vec<Statement>,
+}
+
+impl Block {
+    pub fn to_code(&self, i: &intern::Intern, out: &mut String) {
+        out.push_str("{ ");
+        for sub in self.stmts.iter() {
+            sub.to_code(i, out);
+            out.push(' ');
+        }
+        out.push('}');
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Statement {
     pub loc: Span,
     pub kind: StatementKind
@@ -109,6 +125,43 @@ impl Expression {
                 right.to_code(i, out);
                 out.push(')');
             },
+            ExpressionKind::Block(block) => block.to_code(i, out),
+            ExpressionKind::If {condition,
+                                consequence,
+                                alternative} => {
+                out.push_str("if ");
+                condition.to_code(i, out);
+                out.push(' ');
+                consequence.to_code(i, out);
+                if let Some(alt) = alternative {
+                    out.push_str(" else ");
+                    alt.to_code(i, out);
+                }
+            },
+            ExpressionKind::Function {name, params, body} => {
+                out.push_str("fn");
+                if let Some(id) = name {
+                    write!(out, " {}", i.lookup(*id).unwrap());
+                }
+                write!(out, "({}) ", params.iter()
+                                        .map(|id| i.lookup(*id).unwrap())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                );
+                body.to_code(i, out);
+            },
+            ExpressionKind::Call {func, args} => {
+                func.to_code(i, out);
+                write!(out, "({})", args.iter()
+                                          .map(|arg| {
+                                              let mut b = String::new();
+                                              arg.to_code(i, &mut b);
+                                              b
+                                          })
+                                          .collect::<Vec<_>>()
+                                          .join(", ")
+                );
+            }
         }
     }
 }
@@ -148,7 +201,7 @@ impl InfixOperator {
     pub fn token_kinds() -> &'static [TokenKind] {
         &[TokenKind::Plus, TokenKind::Minus, TokenKind::Star, TokenKind::Slash,
           TokenKind::GT, TokenKind::GtEq, TokenKind::LT, TokenKind::LtEq,
-          TokenKind::Eq, TokenKind::NotEq]
+          TokenKind::Eq, TokenKind::NotEq, TokenKind::LParen,]
     }
 }
 
@@ -167,5 +220,20 @@ pub enum ExpressionKind {
         left: Box<Expression>,
         right: Box<Expression>,
     },
+    Block(Block),
+    If {
+        condition: Box<Expression>,
+        consequence: Block,
+        alternative: Option<Block>,
+    },
+    Function {
+        name: Option<intern::Id>,
+        params: Vec<intern::Id>,
+        body: Block,
+    },
+    Call {
+        func: Box<Expression>,
+        args: Vec<Expression>,
+    }
 }
 

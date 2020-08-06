@@ -22,6 +22,7 @@ impl fmt::Display for ParseError {
 
 pub type ParseStatementResult = Result<Statement, ParseError>;
 pub type ParseExpressionResult = Result<Expression, ParseError>;
+pub type ParseBlockResult = Result<Block, ParseError>;
 
 pub struct Parser {
     toks: Vec<Token>,
@@ -198,6 +199,9 @@ impl Parser {
             TokenKind::True | TokenKind::False => self.parse_bool()?,
             TokenKind::Bang | TokenKind::Minus => self.parse_prefix()?,
             TokenKind::LParen => self.parse_grouped()?,
+            TokenKind::LBrace => self.parse_block_expression()?,
+            TokenKind::If => self.parse_if()?,
+            TokenKind::Function => self.parse_function()?,
             _ => return Err(ParseError {
                     loc: cur.loc,
                     reason: format!("No prefix parse function for {:?}", cur.kind)
@@ -300,6 +304,7 @@ impl Parser {
             TokenKind::LtEq => InfixOperator::LtEq,
             TokenKind::Eq => InfixOperator::Eq,
             TokenKind::NotEq => InfixOperator::NotEq,
+            TokenKind::LParen => return self.parse_call(left),
             _ => return Err(ParseError {
                 loc,
                 reason: format!("Expected an infix operator, found a {:?}", cur.kind),
@@ -317,6 +322,110 @@ impl Parser {
                 right,
             }
         })
+    }
+
+    fn parse_block(&mut self) -> ParseBlockResult {
+        let cur = self.cur.expect("parse_block called when self.cur is None");
+        let loc = cur.loc;
+        if cur.kind != TokenKind::LBrace {
+            return Err(ParseError { loc, reason: format!("Expected a {{ but found a {:?}", cur.kind)})
+        }
+        let mut stmts = Vec::new();
+        self.read_token();
+        while let Some(Token { kind, ..}) = self.cur {
+            if matches!(kind, TokenKind::RBrace | TokenKind::EOF) {
+                break
+            }
+            let stmt = self.parse_statement().unwrap()?;
+            stmts.push(stmt);
+        }
+        Ok(Block { stmts })
+    }
+
+    fn parse_block_expression(&mut self) -> ParseExpressionResult {
+        let loc = self.cur.unwrap().loc;
+        let block = self.parse_block()?;
+        Ok(Expression {
+            loc,
+            kind: ExpressionKind::Block(block),
+        })
+    }
+
+    fn parse_if(&mut self) -> ParseExpressionResult {
+        let loc = self.cur.expect("parse_if called when self.cur is None").loc;
+        self.read_token();
+        let condition = Box::new(self.parse_expression(ExpressionPrecedence::Lowest)?);
+        self.read_token();
+        let consequence = self.parse_block()?;
+        let alternative = if self.peek_token_is(TokenKind::Else) {
+            self.read_token();
+            self.read_token();
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+        Ok(Expression {
+            loc,
+            kind: ExpressionKind::If {
+                condition,
+                consequence,
+                alternative,
+            },
+        })
+    }
+
+    fn parse_function(&mut self) -> ParseExpressionResult {
+        let loc = self.cur.expect("parse_function called when self.cur is None").loc;
+        let name = if self.peek_token_is(TokenKind::Ident) {
+            let id = self.peek;
+            self.read_token();
+            id.unwrap().str_data()
+        } else {
+            None
+        };
+        self.expect_peek(TokenKind::LParen, "function argument list")?;
+        let mut params = Vec::new();
+        while !self.peek_token_is(TokenKind::RParen) {
+            let param = self.expect_peek(TokenKind::Ident, "function argument list")?.str_data().unwrap();
+            if !self.peek_token_is(TokenKind::RParen) {
+                self.expect_peek(TokenKind::Comma, "function argument list")?;
+            }
+            params.push(param);
+        }
+        self.expect_peek(TokenKind::RParen, "function argument list")?;
+        self.expect_peek(TokenKind::LBrace, "function body")?;
+        let body = self.parse_block()?;
+        Ok(Expression {
+            loc,
+            kind: ExpressionKind::Function {
+                name,
+                params,
+                body,
+            }
+        })
+    }
+
+    fn parse_call(&mut self, func: Expression) -> ParseExpressionResult {
+        let func = Box::new(func);
+        let loc = self.cur.unwrap().loc;
+        let mut args = Vec::new();
+        while !self.peek_token_is(TokenKind::RParen) {
+            self.read_token();
+            let arg = self.parse_expression(ExpressionPrecedence::Lowest)?;
+            args.push(arg);
+            if !self.peek_token_is(TokenKind::RParen) {
+                self.expect_peek(TokenKind::Comma, "in function call")?;
+            };
+        }
+        self.expect_peek(TokenKind::RParen, "in function call")?;
+        Ok(Expression {
+            loc,
+            kind: ExpressionKind::Call {
+                func,
+                args,
+            }
+        })
+
     }
 }
 
@@ -406,6 +515,58 @@ mod tests {
                 (1 + (1 * 2));\n\
                 ((1 + 2) / 3);\n\
                 ((1 + 2) * (4 - 2));\n\
+                "
+    );
+
+    parse_test!(blocks:
+                "{ x };
+                { x; y; z}
+                { 1 + 1; 2}
+                {}
+                " => "\
+                { x; };\n\
+                { x; y; z; };\n\
+                { (1 + 1); 2; };\n\
+                { };\n\
+                "
+    );
+
+    parse_test!(if_:
+                "if true { 1 };
+                if false { 0 } else { x };
+                if (1 == 2) { yes } else { no };
+                if (3 - 2 == 1) { a } else { b };
+                " => "\
+                if true { 1; };\n\
+                if false { 0; } else { x; };\n\
+                if (1 == 2) { yes; } else { no; };\n\
+                if ((3 - 2) == 1) { a; } else { b; };\n\
+                "
+    );
+
+    parse_test!(functions:
+                "
+                fn() {
+                    hello
+                };
+                fn add1(x) {
+                    x + 1;
+                };
+                let x = fn(a) { a > 2 };
+                print(1);
+                let y = add1(2);
+                foo(bar)(baz);
+                spam(eggs, 1 + 1, bacon);
+                k((1 + 2) / 3);
+                " => "\
+                fn() { hello; };\n\
+                fn add1(x) { (x + 1); };\n\
+                let x = fn(a) { (a > 2); };\n\
+                print(1);\n\
+                let y = add1(2);\n\
+                foo(bar)(baz);\n\
+                spam(eggs, (1 + 1), bacon);\n\
+                k(((1 + 2) / 3));\n\
                 "
     );
 }

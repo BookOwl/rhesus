@@ -94,6 +94,7 @@ impl TokenKind {
             LT | LtEq | GT | GtEq => ExpressionPrecedence::LessGreater,
             Plus | Minus => ExpressionPrecedence::Sum,
             Star | Slash => ExpressionPrecedence::Product,
+            LParen => ExpressionPrecedence::Call,
             _ => ExpressionPrecedence::Lowest,
         }
     }
@@ -202,7 +203,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
     }
 
     fn read_ident(&mut self) -> &'a str {
-        self.read_while(Self::is_letter)
+        self.read_while(|c| Self::is_letter(c) | Self::is_digit(c))
     }
 
     fn read_number(&mut self) -> i64 {
