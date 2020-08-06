@@ -5,13 +5,20 @@ use std::collections::HashMap;
 use std::cmp::{PartialEq, Eq};
 
 use crate::{intern, ast, parser, lexer};
+use crate::ast::Block;
 
 pub enum Object {
     Int(i64),
     Bool(bool),
-    PrimFunction{
+    PrimFunction {
         name: &'static str,
         func: Box<dyn Fn(&[GcObject]) -> EvalResult>
+    },
+    Closure {
+        name: Option<String>,
+        env: Rc<RefCell<Environment>>,
+        params: Vec<intern::Id>,
+        body: Block,
     },
     Null,
 }
@@ -22,6 +29,7 @@ impl fmt::Debug for Object {
             Object::Int(i) => write!(f, "Int({})", i),
             Object::Bool(b) => write!(f, "Bool({})", b),
             Object::PrimFunction { name, ..} => write!(f, "PrimFunction(<'{}'>)", name),
+            Object::Closure {ref name, ..} => write!(f, "Closure(<{}>", name.as_ref().cloned().unwrap_or_else(|| "...".to_string())),
             Object::Null => write!(f, "Null"),
         }
     }
@@ -33,6 +41,7 @@ impl fmt::Display for Object {
             Object::Int(i) => write!(f, "{}", i),
             Object::Bool(b) => write!(f, "{}", b),
             Object::PrimFunction { name, ..} => write!(f, "<primitive function '{}'>", name),
+            Object::Closure {ref name, ..} => write!(f, "<closure{}>", name.as_ref().map(|n| format!(" '{}'", n)).unwrap_or_else(|| "...".to_string())),
             Object::Null => write!(f, "null"),
         }
     }
@@ -43,10 +52,9 @@ impl PartialEq for Object {
         match (self, other) {
             (Object::Int(x), Object::Int(y)) => x == y,
             (Object::Bool(x), Object::Bool(y)) => x == y,
-            (Object::PrimFunction { func: ref f1, ..},
-                Object::PrimFunction { func: ref f2, ..}) => (f1 as *const _ as usize) == (f2 as *const _ as usize),
             (Object::Null, Object::Null) => true,
-            (_, _) => false,
+            // Everything else can be compared by pointer equality
+            (_, _) => (self as *const _ as usize) == (other as *const _ as usize),
         }
     }
 }
@@ -57,7 +65,7 @@ impl Object {
         match *self {
             Object::Int(_) => "Int",
             Object::Bool(_) => "Bool",
-            Object::PrimFunction { .. } => "Function",
+            Object::PrimFunction { .. } | Object::Closure { .. } => "Function",
             Object::Null => "null",
         }
     }
@@ -90,6 +98,7 @@ pub enum EvalError {
         loc: ast::Span,
         name: String,
     },
+
     ParseError(Vec<parser::ParseError>),
     EarlyReturn(GcObject),
 }
@@ -108,7 +117,7 @@ pub type EvalResult = Result<GcObject, EvalError>;
 
 
 #[derive(Debug)]
-struct Environment {
+pub struct Environment {
     prev: Option<Rc<RefCell<Environment>>>,
     env: HashMap<intern::Id, GcObject>,
 }
@@ -241,7 +250,9 @@ impl Interpreter {
                 }
             },
             ast::ExpressionKind::Call { ref func, ref args} => self.eval_call(expr.loc, Rc::clone(&env), func, args),
-            ref e => todo!("{:?} is not implemented yet", e),
+            ast::ExpressionKind::Function { name, ref params, ref body} => {
+                self.create_closure(expr.loc, Rc::clone(&env), name, &params, &body)
+            },
         }
     }
 
@@ -328,12 +339,39 @@ impl Interpreter {
     fn eval_call(&mut self, loc: ast::Span, env: Rc<RefCell<Environment>>, func: &ast::Expression, args: &[ast::Expression]) -> EvalResult {
         let f = self.eval_expr(Rc::clone(&env),func)?;
         let x = f.borrow();
-        if let Object::PrimFunction { ref func, ..} = *x{
+        if let Object::PrimFunction { ref func, ..} = *x {
             let args: Vec<GcObject> = args.iter().map(|arg| self.eval_expr(Rc::clone(&env),arg)).collect::<Result<Vec<_>, _>>()?;
             return (*func)(&args)
+        } else if let Object::Closure { ref name,
+                                        env: ref created_env,
+                                        ref params,
+                                        ref body} = *x {
+            let new_env = Environment::sub_scope(Rc::clone(created_env));
+            if params.len() != args.len() {
+                return Err(EvalError::type_error(loc, format!("Function call expected {} arguments but got {}", params.len(), args.len())))
+            }
+            for (name, arg) in params.iter().zip(args.iter()) {
+                let arg = self.eval_expr(Rc::clone(&env), arg)?;
+                new_env.borrow_mut().assign(*name, arg);
+            }
+            return self.eval_block(new_env, body);
         } else {
             return Err(EvalError::type_error(loc, format!("Expected a 'Function(..)', but got '{}(..)'", f.borrow().kind())))
         };
+    }
+
+    fn create_closure(&mut self, loc: ast::Span, env: Rc<RefCell<Environment>>,
+                      name: Option<intern::Id>, params: &[intern::Id], body: &Block) -> EvalResult {
+        let closure = gc(Object::Closure {
+            name: name.map(|id| self.intern.lookup(id).unwrap().to_string()),
+            env: Rc::clone(&env),
+            params: params.to_vec(),
+            body: body.clone(),
+        });
+        if let Some(id) = name {
+            env.borrow_mut().assign(id, Rc::clone(&closure));
+        }
+        Ok(closure)
     }
 }
 

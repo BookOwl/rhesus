@@ -10,7 +10,7 @@ pub struct Span {
     pub end_idx: u64,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
     pub stmts: Vec<Statement>,
 }
@@ -24,7 +24,7 @@ impl Program {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Block {
     pub stmts: Vec<Statement>,
 }
@@ -40,7 +40,7 @@ impl Block {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Statement {
     pub loc: Span,
     pub kind: StatementKind
@@ -67,7 +67,7 @@ impl Statement {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementKind {
     Let {
         ident: intern::Id,
@@ -81,7 +81,7 @@ pub enum StatementKind {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Expression {
     pub loc: Span,
     pub kind: ExpressionKind,
@@ -206,7 +206,7 @@ impl InfixOperator {
 }
 
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExpressionKind {
     Variable(intern::Id),
     Int(i64),
