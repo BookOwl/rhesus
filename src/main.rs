@@ -2,6 +2,7 @@ use std::io;
 use std::io::prelude::*;
 
 use rhesus;
+use rhesus::eval::EvalError;
 
 fn main() -> io::Result<()> {
     let mut stdout  = io::stdout();
@@ -18,14 +19,18 @@ fn main() -> io::Result<()> {
         stdin.read_line(&mut buf)?;
         let res = interp.eval(&buf);
         match res {
-            Ok(o) => println!("{}", o),
-            Err(rhesus::eval::EvalError::ParseError(ref errs)) => {
+            Ok(o) | Err(EvalError::EarlyReturn(o)) => println!("{}", o.borrow()),
+            Err(EvalError::ParseError(ref errs)) => {
                 for err in errs.iter() {
                     println!("Parse Error at line {}, column {}: {}", err.loc.line, err.loc.col, err.reason);
                 }
                 println!();
             },
-            Err(rhesus::eval::EvalError::TypeError {reason, ..}) => {
+            Err(EvalError::UnboundVariable{loc, ref name}) => {
+                println!("Unbound Variable Error at line {}, column {}: Attempted to use variable '{}' that was not defined",
+                            loc.line, loc.col, name)
+            }
+            Err(EvalError::TypeError {reason, ..}) => {
                 println!("{}", reason);
             }
         }
