@@ -106,11 +106,21 @@ impl Interpreter {
         match expr.kind {
             ast::ExpressionKind::Int(i) => Ok(Object::Int(i)),
             ast::ExpressionKind::Bool(b) => Ok(Object::Bool(b)),
+            ast::ExpressionKind::Block(ref b) => self.eval_block(b),
             ast::ExpressionKind::PrefixOp { operator,
                                             ref expr} => self.eval_prefix(expr.loc,operator, &expr),
             ast::ExpressionKind::InfixOp { operator,
                                            ref left,
                                            ref right} => self.eval_infix(expr.loc, operator, &left, &right),
+            ast::ExpressionKind::If { ref condition,
+                                      ref consequence,
+                                      ref alternative,} => {
+                if self.eval_expr(&condition)?.truthy() {
+                    self.eval_block(consequence)
+                } else {
+                    alternative.as_ref().map_or(Ok(Object::Null), |b| self.eval_block(&b))
+                }
+            }
             ref e => todo!("{:?} is not implemented yet", e),
         }
     }
@@ -185,6 +195,14 @@ impl Interpreter {
                 }
             },
         }
+    }
+
+    fn eval_block(&mut self, block: &ast::Block) -> EvalResult {
+        let mut res = Object::Null;
+        for stmt in block.stmts.iter() {
+            res = self.eval_statement(stmt)?;
+        }
+        Ok(res)
     }
 }
 
