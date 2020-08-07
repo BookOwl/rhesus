@@ -29,6 +29,9 @@ fn main() -> io::Result<()> {
             Err(EvalError::UnboundVariable{loc, ref name}) => {
                 println!("Unbound Variable Error at line {}, column {}: Attempted to use variable '{}' that was not defined",
                             loc.line, loc.col, name)
+            },
+            Err(EvalError::IndexError {loc, ref reason}) => {
+                println!("Index Error at line {}, column {}: {}", loc.line, loc.col, reason)
             }
             Err(EvalError::TypeError {reason, ..}) => {
                 println!("{}", reason);

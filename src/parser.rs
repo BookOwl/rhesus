@@ -320,6 +320,7 @@ impl Parser {
             TokenKind::Eq => InfixOperator::Eq,
             TokenKind::NotEq => InfixOperator::NotEq,
             TokenKind::LParen => return self.parse_call(left),
+            TokenKind::LBracket => return self.parse_index(left),
             _ => return Err(ParseError {
                 loc,
                 reason: format!("Expected an infix operator, found a {:?}", cur.kind),
@@ -462,7 +463,21 @@ impl Parser {
                 args,
             }
         })
+    }
 
+    fn parse_index(&mut self, left: Expression) -> ParseExpressionResult {
+        let left = Box::new(left);
+        let loc = self.cur.unwrap().loc;
+        self.read_token();
+        let index = Box::new(self.parse_expression(ExpressionPrecedence::Lowest)?);
+        self.expect_peek(TokenKind::RBracket, "in index operation")?;
+        Ok(Expression {
+            loc,
+            kind: ExpressionKind::Index {
+                left,
+                index,
+            }
+        })
     }
 }
 

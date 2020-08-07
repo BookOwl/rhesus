@@ -175,7 +175,14 @@ impl Expression {
                                         .collect::<Vec<_>>()
                                         .join(", ")
                 );
-            }
+            },
+            ExpressionKind::Index {left, index} => {
+                out.push('(');
+                left.to_code(i, out);
+                out.push_str(")[");
+                index.to_code(i, out);
+                out.push(']');
+            },
         }
     }
 }
@@ -189,6 +196,7 @@ pub enum ExpressionPrecedence {
     Product,
     Prefix,
     Call,
+    Index,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -215,7 +223,7 @@ impl InfixOperator {
     pub fn token_kinds() -> &'static [TokenKind] {
         &[TokenKind::Plus, TokenKind::Minus, TokenKind::Star, TokenKind::Slash,
           TokenKind::GT, TokenKind::GtEq, TokenKind::LT, TokenKind::LtEq,
-          TokenKind::Eq, TokenKind::NotEq, TokenKind::LParen,]
+          TokenKind::Eq, TokenKind::NotEq, TokenKind::LParen, TokenKind::LBracket]
     }
 }
 
@@ -251,5 +259,9 @@ pub enum ExpressionKind {
         args: Vec<Expression>,
     },
     List(Vec<Expression>),
+    Index {
+        left: Box<Expression>,
+        index: Box<Expression>,
+    },
 }
 

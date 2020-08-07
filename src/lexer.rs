@@ -105,6 +105,7 @@ impl TokenKind {
             Plus | Minus => ExpressionPrecedence::Sum,
             Star | Slash => ExpressionPrecedence::Product,
             LParen => ExpressionPrecedence::Call,
+            LBracket => ExpressionPrecedence::Index,
             _ => ExpressionPrecedence::Lowest,
         }
     }

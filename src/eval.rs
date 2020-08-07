@@ -120,6 +120,10 @@ pub enum EvalError {
         loc: ast::Span,
         name: String,
     },
+    IndexError {
+        loc: ast::Span,
+        reason: String,
+    },
     ParseError(Vec<parser::ParseError>),
     EarlyReturn(GcObject),
 }
@@ -267,6 +271,7 @@ impl Interpreter {
     }
 
     fn eval_expr(&mut self, env: Rc<RefCell<Environment>>, expr: &ast::Expression) -> EvalResult {
+        let loc = expr.loc;
         match expr.kind {
             ast::ExpressionKind::Int(i) => Ok(gc(Object::Int(i))),
             ast::ExpressionKind::Bool(b) => Ok(gc(Object::Bool(b))),
@@ -306,6 +311,25 @@ impl Interpreter {
             ast::ExpressionKind::Function { name, ref params, ref body} => {
                 self.create_closure(expr.loc, Rc::clone(&env), name, &params, &body)
             },
+            ast::ExpressionKind::Index {ref left, ref index } => {
+                let left = self.eval_expr(Rc::clone(&env), left)?;
+                let index = self.eval_expr(Rc::clone(&env), index)?;
+                let (l, r) = (left.borrow(), index.borrow());
+                match (&*l, &*r) {
+                    (Object::List(ref l), Object::Int(i)) => {
+                        l.get(*i as usize)
+                         .cloned()
+                         .ok_or_else(|| EvalError::IndexError {loc, reason: "list index out of range".to_string()})
+                    },
+                    (Object::String(ref s), Object::Int(i)) => {
+                        s.chars()
+                            .nth(*i as usize)
+                            .map(|c| gc(Object::String(format!("{}", c))))
+                            .ok_or_else(|| EvalError::IndexError {loc, reason: "string index out of range".to_string()})
+                    },
+                    (l, r) => Err(EvalError::type_error(loc, format!("{} can not be indexed by {}", l.kind(), r.kind()))),
+                }
+            }
         }
     }
 
