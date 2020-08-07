@@ -25,6 +25,13 @@ impl Token {
             data: TokenData::Int(i),
         }
     }
+    pub fn string(loc: Span, id: Id) -> Self {
+        Token {
+            loc,
+            kind: TokenKind::String,
+            data: TokenData::String(id)
+        }
+    }
     pub fn new(loc: Span, kind: TokenKind) -> Self {
         Token {
             loc,
@@ -57,6 +64,7 @@ enum TokenData {
 pub enum TokenKind {
     Ident,
     Int,
+    String,
     Assign,
     Plus,
     Minus,
@@ -212,6 +220,13 @@ impl<'a, 'b> Lexer<'a, 'b> {
         n.parse().unwrap()
     }
 
+    fn read_string(&mut self) -> &'a str {
+        self.read_char();
+        let s = self.read_while(|c| c != '"');
+        self.read_char();
+        s
+    }
+
     pub fn read_token(&mut self) -> Token {
         if let Some(end) = self.eof {
             return end
@@ -222,6 +237,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
         let start_idx = self.loc();
         let mut ident = None;
         let mut int: i64 = 0;
+        let mut string = None;
         let mut eof = false;
         let kind = if let Some((_, c)) = self.ch {
             // todo: make an abstraction for the two character tokens
@@ -268,6 +284,11 @@ impl<'a, 'b> Lexer<'a, 'b> {
                         TokenKind::GT
                     }
                 },
+                '"' => {
+                    let s = self.read_string();
+                    string = Some(self.intern.intern(s));
+                    TokenKind::String
+                }
                 d if Self::is_digit(d) => {
                     int = self.read_number();
                     TokenKind::Int
@@ -303,6 +324,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
         match kind {
             TokenKind::Int => Token::int(loc, int),
             TokenKind::Ident => Token::ident(loc, ident.unwrap()),
+            TokenKind::String => Token::string(loc, string.unwrap()),
             _ => Token::new(loc, kind),
         }
     }

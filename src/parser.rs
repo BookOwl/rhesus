@@ -196,6 +196,7 @@ impl Parser {
         let mut left = match cur.kind {
             TokenKind::Ident => self.parse_ident()?,
             TokenKind::Int => self.parse_int()?,
+            TokenKind::String => self.parse_string()?,
             TokenKind::True | TokenKind::False => self.parse_bool()?,
             TokenKind::Bang | TokenKind::Minus => self.parse_prefix()?,
             TokenKind::LParen => self.parse_grouped()?,
@@ -240,6 +241,19 @@ impl Parser {
             t => Err(ParseError{
                 loc: t.loc,
                 reason: format!("Expected an integer, found a {:?}", t.kind)
+            }),
+        }
+    }
+
+    fn parse_string(&mut self) -> ParseExpressionResult {
+        match self.cur.unwrap() {
+            t @ Token {kind: TokenKind::String, ..} => Ok(Expression {
+                loc: t.loc,
+                kind: ExpressionKind::String(t.str_data().unwrap()),
+            }),
+            t => Err(ParseError{
+                loc: t.loc,
+                reason: format!("Expected a string, found a {:?}", t.kind)
             }),
         }
     }

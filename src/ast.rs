@@ -96,6 +96,9 @@ impl Expression {
             ExpressionKind::Variable(id) => {
                 out.push_str(i.lookup(*id).unwrap());
             },
+            ExpressionKind::String(s) => {
+                write!(out, "\"{}\"", i.lookup(*s).unwrap());
+            }
             ExpressionKind::PrefixOp {operator, expr} => {
                 out.push_str(match operator {
                     PrefixOperator::Bang => "!(",
@@ -211,6 +214,7 @@ pub enum ExpressionKind {
     Variable(intern::Id),
     Int(i64),
     Bool(bool),
+    String(intern::Id),
     PrefixOp {
         operator: PrefixOperator,
         expr: Box<Expression>,

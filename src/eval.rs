@@ -10,6 +10,7 @@ use crate::ast::Block;
 pub enum Object {
     Int(i64),
     Bool(bool),
+    String(String),
     PrimFunction {
         name: &'static str,
         func: Box<dyn Fn(&[GcObject]) -> EvalResult>
@@ -28,6 +29,7 @@ impl fmt::Debug for Object {
         match *self {
             Object::Int(i) => write!(f, "Int({})", i),
             Object::Bool(b) => write!(f, "Bool({})", b),
+            Object::String(ref s) => write!(f, "String(\"{}\")", s),
             Object::PrimFunction { name, ..} => write!(f, "PrimFunction(<'{}'>)", name),
             Object::Closure {ref name, ..} => write!(f, "Closure(<{}>", name.as_ref().cloned().unwrap_or_else(|| "...".to_string())),
             Object::Null => write!(f, "Null"),
@@ -40,6 +42,7 @@ impl fmt::Display for Object {
         match *self {
             Object::Int(i) => write!(f, "{}", i),
             Object::Bool(b) => write!(f, "{}", b),
+            Object::String(ref s) => write!(f, "\"{}\"", s),
             Object::PrimFunction { name, ..} => write!(f, "<primitive function '{}'>", name),
             Object::Closure {ref name, ..} => write!(f, "<closure{}>", name.as_ref().map(|n| format!(" '{}'", n)).unwrap_or_else(|| "...".to_string())),
             Object::Null => write!(f, "null"),
@@ -52,6 +55,7 @@ impl PartialEq for Object {
         match (self, other) {
             (Object::Int(x), Object::Int(y)) => x == y,
             (Object::Bool(x), Object::Bool(y)) => x == y,
+            (Object::String(x), Object::String(y)) => x == y,
             (Object::Null, Object::Null) => true,
             // Everything else can be compared by pointer equality
             (_, _) => (self as *const _ as usize) == (other as *const _ as usize),
@@ -65,6 +69,7 @@ impl Object {
         match *self {
             Object::Int(_) => "Int",
             Object::Bool(_) => "Bool",
+            Object::String(_) => "String",
             Object::PrimFunction { .. } | Object::Closure { .. } => "Function",
             Object::Null => "null",
         }
@@ -73,6 +78,7 @@ impl Object {
     pub fn truthy(&self) -> bool {
         match self {
             Object::Int(0) | Object::Bool(false) => false,
+            Object::String(ref s) => s != "",
             _ => true,
         }
     }
@@ -98,7 +104,6 @@ pub enum EvalError {
         loc: ast::Span,
         name: String,
     },
-
     ParseError(Vec<parser::ParseError>),
     EarlyReturn(GcObject),
 }
@@ -180,7 +185,13 @@ impl Interpreter {
                                                  "print",
                                                  |args| {
                                                      println!("{}", args.iter()
-                                                                         .map(|o| format!("{}", o.borrow()))
+                                                                         .map(|o| {
+                                                                            if let Object::String(ref s) = *o.borrow() {
+                                                                                s.clone()
+                                                                            } else {
+                                                                                format!("{}", o.borrow())
+                                                                            }
+                                                                         })
                                                                          .collect::<Vec<_>>()
                                                                          .join(" ")
                                                      );
@@ -227,6 +238,10 @@ impl Interpreter {
         match expr.kind {
             ast::ExpressionKind::Int(i) => Ok(gc(Object::Int(i))),
             ast::ExpressionKind::Bool(b) => Ok(gc(Object::Bool(b))),
+            ast::ExpressionKind::String(s) => {
+                let s = self.intern.lookup(s).unwrap();
+                Ok(gc(Object::String(s.to_string())))
+            }
             ast::ExpressionKind::Variable(name) => {
                 env.borrow().lookup(name)
                     .map_err(|_| EvalError::UnboundVariable {
@@ -304,7 +319,8 @@ impl Interpreter {
             ast::InfixOperator::Plus => {
                 match (&*left.borrow(), &*right.borrow()) {
                     (Object::Int(l), Object::Int(r)) => Ok(gc(Object::Int(l + r))),
-                    (l, r) => Err(EvalError::type_error(loc, format!("Expected 'Int + Int' but got '{} + {}'", l.kind(), r.kind())))
+                    (Object::String(ref l), Object::String(ref r)) => Ok(gc(Object::String(format!("{}{}", l, r)))),
+                    (l, r) => Err(EvalError::type_error(loc, format!("Expected 'Int + Int' or 'String + String', but got '{} + {}'", l.kind(), r.kind()))),
                 }
             },
             ast::InfixOperator::Minus => {
