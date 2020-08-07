@@ -6,6 +6,7 @@ use std::cmp::{PartialEq, Eq};
 
 use crate::{intern, ast, parser, lexer};
 use crate::ast::Block;
+use crate::ast::Span;
 
 pub enum Object {
     Int(i64),
@@ -13,7 +14,7 @@ pub enum Object {
     String(String),
     PrimFunction {
         name: &'static str,
-        func: Box<dyn Fn(&[GcObject]) -> EvalResult>
+        func: Box<dyn Fn(Span, &[GcObject]) -> EvalResult>
     },
     Closure {
         name: Option<String>,
@@ -149,7 +150,7 @@ impl Environment {
             Err(UnboundVariableError)
         }
     }
-    fn create_primitive(&mut self, i: &mut intern::Intern, name: &'static str, f: impl Fn(&[GcObject]) -> EvalResult + 'static) {
+    fn create_primitive(&mut self, i: &mut intern::Intern, name: &'static str, f: impl Fn(Span, &[GcObject]) -> EvalResult + 'static) {
         let id = i.intern(name);
         self.assign(id, gc(Object::PrimFunction {
             name,
@@ -171,6 +172,37 @@ impl Environment {
     }
 }
 
+mod Builtins {
+    use super::*;
+    use crate::ast::Span;
+
+    pub(crate) fn print(loc: Span, args: &[GcObject]) -> EvalResult {
+        println!("{}", args.iter()
+                           .map(|o| {
+                               if let Object::String(ref s) = *o.borrow() {
+                                   s.clone()
+                               } else {
+                                   format!("{}", o.borrow())
+                               }
+                           })
+                           .collect::<Vec<_>>()
+                           .join(" ")
+        );
+        Ok(gc(Object::Null))
+    }
+
+    pub(crate) fn len(loc: Span, args: &[GcObject]) -> EvalResult {
+        if let [arg] = args {
+            match &*arg.borrow() {
+                Object::String(ref s) => Ok(gc(Object::Int(s.len() as i64))),
+                x => Err(EvalError::type_error(loc, format!("Object of type {} has no len()", x.kind()))),
+            }
+        } else {
+            Err(EvalError::type_error(loc, format!("len() takes only 1 argument but got {}", args.len())))
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Interpreter {
     global_env: Rc<RefCell<Environment>>,
@@ -181,23 +213,8 @@ impl Interpreter {
     pub fn new() -> Self {
         let mut intern = intern::Intern::new_with_capacity(1024);
         let global_env = Environment::empty();
-        global_env.borrow_mut().create_primitive(&mut intern,
-                                                 "print",
-                                                 |args| {
-                                                     println!("{}", args.iter()
-                                                                         .map(|o| {
-                                                                            if let Object::String(ref s) = *o.borrow() {
-                                                                                s.clone()
-                                                                            } else {
-                                                                                format!("{}", o.borrow())
-                                                                            }
-                                                                         })
-                                                                         .collect::<Vec<_>>()
-                                                                         .join(" ")
-                                                     );
-                                                     Ok(gc(Object::Null))
-                                                 }
-        );
+        global_env.borrow_mut().create_primitive(&mut intern, "print", Builtins::print);
+        global_env.borrow_mut().create_primitive(&mut intern, "len", Builtins::len);
         Interpreter {
             global_env,
             intern,
@@ -357,7 +374,7 @@ impl Interpreter {
         let x = f.borrow();
         if let Object::PrimFunction { ref func, ..} = *x {
             let args: Vec<GcObject> = args.iter().map(|arg| self.eval_expr(Rc::clone(&env),arg)).collect::<Result<Vec<_>, _>>()?;
-            return (*func)(&args)
+            return (*func)(loc, &args)
         } else if let Object::Closure { ref name,
                                         env: ref created_env,
                                         ref params,
