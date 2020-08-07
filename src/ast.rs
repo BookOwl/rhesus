@@ -164,6 +164,17 @@ impl Expression {
                                           .collect::<Vec<_>>()
                                           .join(", ")
                 );
+            },
+            ExpressionKind::List(ref items) => {
+                write!(out, "[{}]", items.iter()
+                                        .map(|arg| {
+                                            let mut b = String::new();
+                                            arg.to_code(i, &mut b);
+                                            b
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                );
             }
         }
     }
@@ -238,6 +249,7 @@ pub enum ExpressionKind {
     Call {
         func: Box<Expression>,
         args: Vec<Expression>,
-    }
+    },
+    List(Vec<Expression>),
 }
 

@@ -201,6 +201,7 @@ impl Parser {
             TokenKind::Bang | TokenKind::Minus => self.parse_prefix()?,
             TokenKind::LParen => self.parse_grouped()?,
             TokenKind::LBrace => self.parse_block_expression()?,
+            TokenKind::LBracket => self.parse_list()?,
             TokenKind::If => self.parse_if()?,
             TokenKind::Function => self.parse_function()?,
             _ => return Err(ParseError {
@@ -362,6 +363,28 @@ impl Parser {
         Ok(Expression {
             loc,
             kind: ExpressionKind::Block(block),
+        })
+    }
+
+    fn parse_list(&mut self) -> ParseExpressionResult {
+        let cur = self.cur.expect("parse_list called when self.cur is None");
+        let loc = cur.loc;
+        if cur.kind != TokenKind::LBracket {
+            return Err(ParseError { loc, reason: format!("Expected a [ but found a {:?}", cur.kind)})
+        }
+        let mut items = Vec::new();
+        while !self.peek_token_is(TokenKind::RBracket) {
+            self.read_token();
+            let item = self.parse_expression(ExpressionPrecedence::Lowest)?;
+            items.push(item);
+            if !self.peek_token_is(TokenKind::RBracket) {
+                self.expect_peek(TokenKind::Comma, "in function call")?;
+            };
+        }
+        self.expect_peek(TokenKind::RBracket, "in list")?;
+        Ok(Expression {
+            loc,
+            kind: ExpressionKind::List(items),
         })
     }
 

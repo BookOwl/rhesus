@@ -22,6 +22,7 @@ pub enum Object {
         params: Vec<intern::Id>,
         body: Block,
     },
+    List(Vec<GcObject>),
     Null,
 }
 
@@ -33,6 +34,12 @@ impl fmt::Debug for Object {
             Object::String(ref s) => write!(f, "String(\"{}\")", s),
             Object::PrimFunction { name, ..} => write!(f, "PrimFunction(<'{}'>)", name),
             Object::Closure {ref name, ..} => write!(f, "Closure(<{}>", name.as_ref().cloned().unwrap_or_else(|| "...".to_string())),
+            Object::List(ref items) => {
+                write!(f, "List([{}])", items.iter()
+                                       .map(|x| format!("{}", x.borrow()))
+                                       .collect::<Vec<_>>()
+                                       .join(", "))
+            },
             Object::Null => write!(f, "Null"),
         }
     }
@@ -46,6 +53,12 @@ impl fmt::Display for Object {
             Object::String(ref s) => write!(f, "\"{}\"", s),
             Object::PrimFunction { name, ..} => write!(f, "<primitive function '{}'>", name),
             Object::Closure {ref name, ..} => write!(f, "<closure{}>", name.as_ref().map(|n| format!(" '{}'", n)).unwrap_or_else(|| "...".to_string())),
+            Object::List(ref items) => {
+                write!(f, "[{}]", items.iter()
+                                             .map(|x| format!("{}", x.borrow()))
+                                             .collect::<Vec<_>>()
+                                             .join(", "))
+            },
             Object::Null => write!(f, "null"),
         }
     }
@@ -58,6 +71,7 @@ impl PartialEq for Object {
             (Object::Bool(x), Object::Bool(y)) => x == y,
             (Object::String(x), Object::String(y)) => x == y,
             (Object::Null, Object::Null) => true,
+            (Object::List(ref l), Object::List(ref r)) => l == r,
             // Everything else can be compared by pointer equality
             (_, _) => (self as *const _ as usize) == (other as *const _ as usize),
         }
@@ -72,7 +86,8 @@ impl Object {
             Object::Bool(_) => "Bool",
             Object::String(_) => "String",
             Object::PrimFunction { .. } | Object::Closure { .. } => "Function",
-            Object::Null => "null",
+            Object::List(_) => "List",
+            Object::Null => "Null",
         }
     }
 
@@ -258,14 +273,20 @@ impl Interpreter {
             ast::ExpressionKind::String(s) => {
                 let s = self.intern.lookup(s).unwrap();
                 Ok(gc(Object::String(s.to_string())))
-            }
+            },
             ast::ExpressionKind::Variable(name) => {
                 env.borrow().lookup(name)
                     .map_err(|_| EvalError::UnboundVariable {
                         loc: expr.loc,
                         name: self.intern.lookup(name).unwrap().to_string()
                     })
-            }
+            },
+            ast::ExpressionKind::List(ref items) => {
+                let items = items.iter().map(|item| {
+                    self.eval_expr(Rc::clone(&env), item)
+                }).collect::<Result<Vec<_>, _>>()?;
+                Ok(gc(Object::List(items)))
+            },
             ast::ExpressionKind::Block(ref b) => self.eval_block(Rc::clone(&env),b),
             ast::ExpressionKind::PrefixOp { operator,
                                             ref expr} => self.eval_prefix(expr.loc, Rc::clone(&env),operator, &expr),
